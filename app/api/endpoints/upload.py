@@ -9,7 +9,7 @@ from app.services.parser import parse_and_generate
 import os, shutil
 import uuid
 
-router = APIRouter()
+router = APIRouter(tags=["Document Collection"])
 
 async def get_db():
     async with AsyncSessionLocal() as session:

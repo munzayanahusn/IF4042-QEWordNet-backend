@@ -4,7 +4,7 @@ from app.db.session import AsyncSessionLocal
 from app.schemas.user import UserCreate, UserOut
 from app.crud.user import create_user
 
-router = APIRouter()
+router = APIRouter(tags=["User"])
 
 async def get_db():
     async with AsyncSessionLocal() as session:
