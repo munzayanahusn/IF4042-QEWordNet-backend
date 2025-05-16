@@ -1,27 +1,11 @@
 import os
-import uuid
-import math
 import csv
+
 from collections import defaultdict, Counter
 from typing import List, Tuple
-import nltk
-
 from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
-from nltk.stem import PorterStemmer
 
-nltk.download("punkt")
-nltk.download("stopwords")
-
-stop_words = set(stopwords.words("english"))
-stemmer = PorterStemmer()
-
-def preprocess_tokens(tokens, use_stop=False, use_stem=False):
-    if use_stop:
-        tokens = [t for t in tokens if t not in stop_words]
-    if use_stem:
-        tokens = [stemmer.stem(t) for t in tokens]
-    return tokens
+from app.services.calculation import compute_tf_log, compute_tf_binary, compute_tf_augmented, compute_idf, preprocess_tokens
 
 def parse_and_generate(file_path: str) -> Tuple[List[dict], str]:
     # Parse raw document
@@ -90,12 +74,14 @@ def parse_and_generate(file_path: str) -> Tuple[List[dict], str]:
             if df == 0:
                 idf = 0
             else:
-                idf = math.log2(N / df)
+                idf = compute_idf(df, N)
 
             for doc_id, tf in doc_freqs.items():
-                tf_binary = 1
-                tf_log = 1 + math.log2(tf)
-                tf_aug = 0.5 + 0.5 * (tf / max(Counter(doc_tokens[doc_id]).values()))
+                tf_binary = compute_tf_binary(tf)
+                tf_log = compute_tf_log(tf)
+
+                max_tf = max(Counter(doc_tokens[doc_id]).values())
+                tf_aug = compute_tf_augmented(tf, max_tf)
 
                 inverted_data.append({
                     "term": term,

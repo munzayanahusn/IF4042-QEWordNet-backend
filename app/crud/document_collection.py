@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import joinedload
 from typing import List
 
 from app.models.document_collection import DocumentCollection
@@ -21,6 +22,8 @@ async def get_all_document_collections(db: AsyncSession):
 
 async def get_document_collection_by_id(db: AsyncSession, id_dc: int):
     result = await db.execute(
-        select(DocumentCollection).where(DocumentCollection.id == id_dc)
+        select(DocumentCollection)
+        .options(joinedload(DocumentCollection.documents))
+        .where(DocumentCollection.id == id_dc)
     )
-    return result.scalar_one_or_none()
+    return result.unique().scalar_one_or_none()
