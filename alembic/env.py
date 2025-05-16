@@ -32,6 +32,8 @@ if config.config_file_name is not None:
 
 from app.db.base import Base
 from app.models import user
+from app.models import document 
+from app.models import document_collection
 
 target_metadata = Base.metadata
 
