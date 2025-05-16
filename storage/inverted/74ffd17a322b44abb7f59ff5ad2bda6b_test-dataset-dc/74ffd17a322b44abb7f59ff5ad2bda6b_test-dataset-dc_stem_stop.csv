@@ -1,0 +1,5 @@
+term,doc_id,tf_raw,tf_log,tf_binary,tf_augmented,idf
+da,4,3,2.584962500721156,1,1.0,2.0
+let,4,2,2.0,1,0.8333333333333333,2.0
+therefor,3,1,1.0,1,1.0,2.0
+think,3,1,1.0,1,1.0,2.0

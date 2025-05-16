@@ -1,0 +1,28 @@
+.I 1
+.T
+To do is to be.
+.A
+Comaromi, J.P.
+.W
+   To be is to do.
+.I 2
+.T 
+To be or not to be.
+.A 
+Slater, M.
+.W
+I am what I am.
+.I 3
+.T
+I think therefore I am.
+.A
+Wilson, P.
+.W
+    Do be do be do.
+.I 4
+.T
+Do do do, da da da.
+.A
+Buckland, M.K.
+.W
+    Let it be, let it be.
