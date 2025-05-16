@@ -1,1 +1,37 @@
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.qewordnet_env/
+
+# Environment variables
 .env
+.env.*
+
+# IDE/editor configs
+.vscode/
+.idea/
+
+# Alembic generated caches (keep versions/*.py, ignore pyc)
+alembic/versions/__pycache__/
+
+# Uploaded or generated files
+storage/inverted/
+storage/docs/
+
+# Log files
+*.log
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# CSVs if generated
+*.csv
+
+# SQLite if used locally
+*.sqlite3
