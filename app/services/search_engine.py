@@ -173,7 +173,7 @@ async def search_query(
     dc = await get_document_collection_by_id(db, dc_id)
     if not dc:
         raise Exception("Document collection not found")
-
+    
     # Search initial query
     initial = search_internal(
         dc,
@@ -188,9 +188,16 @@ async def search_query(
         doc_norm
     )
 
-    # Expand query using WordNet
-    expanded_terms = set(word_tokenize(query.lower())).union(get_all_synonyms(query))
-    expanded_query = " ".join(expanded_terms)
+    # Tokenize
+    raw_tokens = word_tokenize(query.lower())
+
+    # Expand synonyms using WordNet
+    synonym_set = set()
+    for token in raw_tokens:
+        synonym_set.update(get_wordnet_synonyms(token))
+
+    expanded_tokens = list(dict.fromkeys(raw_tokens + list(synonym_set)))
+    expanded_query = " ".join(expanded_tokens)
 
     # Search expanded query
     expanded = search_internal(
