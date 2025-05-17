@@ -4,15 +4,19 @@ from fastapi import FastAPI
 from nltk.data import find
 from nltk import download
 
+import nltk
+from nltk.data import find
+
 try:
     find("tokenizers/punkt")
 except LookupError:
-    download("punkt")
+    nltk.download("punkt")
+    nltk.download("punkt_tab")
 
 try:
     find("corpora/stopwords")
 except LookupError:
-    download("stopwords")
+    nltk.download("stopwords")
 
 from app.api.endpoints import user, upload, document_collection, search
 
