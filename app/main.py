@@ -4,9 +4,6 @@ from fastapi import FastAPI
 from nltk.data import find
 from nltk import download
 
-import nltk
-from nltk.data import find
-
 try:
     find("tokenizers/punkt")
 except LookupError:
