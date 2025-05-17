@@ -1,9 +1,20 @@
-from fastapi import FastAPI
 import nltk
-from app.api.endpoints import user, upload, document_collection, search
 
-nltk.download("punkt")
-nltk.download("stopwords")
+from fastapi import FastAPI
+from nltk.data import find
+from nltk import download
+
+try:
+    find("tokenizers/punkt")
+except LookupError:
+    download("punkt")
+
+try:
+    find("corpora/stopwords")
+except LookupError:
+    download("stopwords")
+
+from app.api.endpoints import user, upload, document_collection, search
 
 app = FastAPI()
 app.include_router(user.router)
