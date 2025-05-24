@@ -7,8 +7,13 @@ class DocumentCreate(BaseModel):
     author: str
     content: str
 
-class DocumentOut(DocumentCreate):
+class DocumentOut(BaseModel):
     id: int
+    id_doc: int
+    id_dc: int
+    title: str
+    author: str
+    content: str
 
     class Config:
         orm_mode = True

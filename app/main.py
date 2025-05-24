@@ -20,7 +20,7 @@ try:
 except LookupError:
     nltk.download("wordnet")
 
-from app.api.endpoints import user, upload, document_collection, search
+from app.api.endpoints import user, upload, document_collection, document, search
 
 app = FastAPI()
 
@@ -35,4 +35,5 @@ app.add_middleware(
 app.include_router(user.router)
 app.include_router(upload.router)
 app.include_router(document_collection.router)
+app.include_router(document.router)
 app.include_router(search.router)
