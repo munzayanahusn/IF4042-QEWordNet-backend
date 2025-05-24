@@ -33,16 +33,20 @@ def load_inverted_index(file_path: str) -> List[Dict]:
         ]
 
 def read_inverted_file_by_dc(dc, stem: bool, stopword: bool):
+    print(f"[DEBUG] Stemming: {stem}, StopWord: {stopword}")
+
     if stem and stopword:
-        inverted_file = "*_stem_stop.csv"
+        inverted_file = "*_both.csv"
     elif stem:
         inverted_file = "*_stem.csv"
     elif stopword:
         inverted_file = "*_stop.csv"
     else:
-        inverted_file = "*_normal.csv"
-
+        inverted_file = "*_none.csv"
+    
     candidate_files = glob.glob(os.path.join(dc.inverted_path, inverted_file))
+    print(f"[DEBUG] Inverted_file: {candidate_files}")
+
     if not candidate_files:
         raise FileNotFoundError(f"No matching inverted file for stemming={stem}, stopword={stopword}")
 

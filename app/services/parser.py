@@ -72,10 +72,10 @@ async def parse_and_generate(file_path: str) -> Tuple[List[dict], str]:
 
     # Processing options
     options = [
-        (False, False, "normal"),
+        (False, False, "none"),
         (True,  False, "stop"),
         (False, True,  "stem"),
-        (True,  True,  "stem_stop"),
+        (True,  True,  "both"),
     ]
 
     for use_stop, use_stem, suffix in options:
