@@ -83,7 +83,7 @@ async def parse_and_generate(file_path: str) -> Tuple[List[dict], str]:
 
         # Precompute max_tf
         max_tfs = {
-            doc_id: max(Counter(tokens).values())
+            doc_id: max(Counter(tokens).values()) if tokens else 1
             for doc_id, tokens in doc_tokens.items()
         }
 

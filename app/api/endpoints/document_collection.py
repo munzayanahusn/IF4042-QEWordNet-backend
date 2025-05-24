@@ -23,14 +23,19 @@ async def get_all_document_collections_route(
 ):
     return await get_all_document_collections(db)
 
-@router.get("/inverted/{id_dc}", response_model=list[InvertedEntry])
+@router.get("/inverted/", response_model=list[InvertedEntry])
 async def read_inverted_by_id(
-    id_dc: int, 
+    id_dc: int = Query(None),
+    id_doc: int = Query(None),
     stem: bool = Query(False),
     stopword: bool = Query(False),
     db: AsyncSession = Depends(get_db)
-):
-    # Fetch document collection from DB
+):  
+    if id_dc is None:
+        raise HTTPException(status_code=400, detail="Document collection ID is required")
+    if id_doc is None:
+        raise HTTPException(status_code=400, detail="Document ID is required")
+    
     dc = await get_document_collection_by_id(db, id_dc)
     if not dc:
         raise HTTPException(status_code=404, detail=f"Document collection with ID {id_dc} not found")
@@ -38,6 +43,8 @@ async def read_inverted_by_id(
     # Read inverted file
     try:
         data = read_inverted_file_by_dc(dc, stem, stopword)
-        return [InvertedEntry(**row) for row in data]
+        filtered_data = [item for item in data if item["doc_id"] == id_doc]
+
+        return [InvertedEntry(**row) for row in filtered_data]
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
