@@ -18,3 +18,14 @@ async def get_document_by_id(db: AsyncSession, id_doc: int, id_dc: int):
         select(Document).where(Document.id == id_doc, Document.id_dc == id_dc)
     )
     return result.scalar_one_or_none()
+
+async def get_document_id_by_dc(db: AsyncSession, id_dc: int):
+    result = await db.execute(
+        select(Document.id_doc)
+        .where(Document.id_dc == id_dc)
+        .order_by(Document.id_doc)
+    )
+
+    doc_ids = result.scalars().all()
+    print("[DEBUG] len result:", len(doc_ids))
+    return doc_ids

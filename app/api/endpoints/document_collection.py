@@ -6,6 +6,7 @@ from app.schemas.document_collection import DocumentCollectionOut
 from app.schemas.inverted import InvertedEntry
 from app.services.search_engine import read_inverted_file_by_dc
 from app.crud.document_collection import get_all_document_collections, get_document_collection_by_id
+from app.crud.document import get_document_id_by_dc
 
 import os
 import glob
@@ -22,6 +23,16 @@ async def get_all_document_collections_route(
     db: AsyncSession = Depends(get_db)
 ):
     return await get_all_document_collections(db)
+
+@router.get("/dc/{id_dc}/docs", response_model=list[int])
+async def get_document_Id_by_dc(
+    id_dc: int,
+    db: AsyncSession = Depends(get_db)
+):
+    doc_ids = await get_document_id_by_dc(db, id_dc)
+    if not doc_ids:
+        raise HTTPException(status_code=404, detail=f"Document with Document ID {id_dc} not found")
+    return doc_ids
 
 @router.get("/inverted/", response_model=list[InvertedEntry])
 async def read_inverted_by_id(
