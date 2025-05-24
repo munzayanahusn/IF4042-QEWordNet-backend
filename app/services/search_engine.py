@@ -2,6 +2,7 @@ import csv
 import os
 import math
 import glob
+import time
 from collections import defaultdict, Counter
 from typing import Dict, List
 from nltk.tokenize import word_tokenize
@@ -73,14 +74,6 @@ def search_internal(
     inverted_data = read_inverted_file_by_dc(dc, stem, stopword)
     if not inverted_data:
         raise Exception("No inverted data found")
-    
-    doc_id_map = {}
-    for doc in dc.documents:
-        doc_id_map[doc.id_doc] = {
-            "title": doc.title,
-            "author": doc.author,
-            "content": doc.content
-        }
 
     doc_vectors = defaultdict(lambda: defaultdict(float))
     idf_lookup = {}
@@ -94,8 +87,12 @@ def search_internal(
         idf_lookup[term] = entry["idf"]
 
     tokens = word_tokenize(query.lower())
-    tokens = [t for t in tokens if t.isalnum()]
+    tokens = [t.replace("_", " ") for t in tokens if t.isalnum() or "_" in t]
+
+    # print("[DEBUG] Tokens before preprocessing:", tokens)
     tokens = preprocess_tokens(tokens, stopword, stem)
+    # print("[DEBUG] Tokens after preprocessing:", tokens)
+
     query_counts = Counter(tokens)
 
     query_vector = {}
@@ -116,51 +113,50 @@ def search_internal(
         if doc_norm:
             d_norm = math.sqrt(sum(v**2 for v in vector.values()))
             dot_product /= d_norm if d_norm != 0 else 1
-        
-        doc_info = doc_id_map.get(doc_id, {
-            "title": "Unknown", 
-            "author": "Unknown", 
-            "content": "Unknown"
-        })
 
         results.append({
             "doc_id": doc_id,
-            "score": dot_product,
-            "doc_title": doc_info["title"],
-            "doc_author": doc_info["author"],
-            "doc_content": doc_info["content"]
+            "score": dot_product
         })
 
     ranked = sorted(results, key=lambda x: x["score"], reverse=True)
     return {
         "ranked_results": [
             {
-                "doc_id": r["doc_id"],
-                "doc_title": r["doc_title"],
-                "doc_author": r["doc_author"],
-                "doc_content": r["doc_content"],
-                "score": r["score"],
-                "rank": i + 1
-            }
+                "doc_id": r["doc_id"], 
+                "score": r["score"], 
+                "rank": i + 1}
             for i, r in enumerate(ranked)
         ],
         "query_vector": query_vector
     }
 
-def get_wordnet_synonyms(word: str) -> List[str]:
-    return list({lemma.name().replace("_", " ") for syn in wordnet.synsets(word) for lemma in syn.lemmas()})
-
-def get_all_synonyms(query: str) -> List[str]:
-    tokens = word_tokenize(query.lower())
-    all_synonyms = set()
-    for token in tokens:
-        all_synonyms.update(get_wordnet_synonyms(token))
-    return list(all_synonyms)
+def get_wordnet_expansions(word: str, types: List[str]) -> List[str]:
+    expansions = set()
+    for syn in wordnet.synsets(word):
+        for t in types:
+            if t == "lemmas":
+                expansions.update(syn.lemma_names())
+            elif t == "hyponyms":
+                expansions.update(hypo.name() for hypo in syn.hyponyms())
+            elif t == "hypernyms":
+                expansions.update(hyper.name() for hyper in syn.hypernyms())
+            elif t == "also_sees":
+                expansions.update(also.name() for also in syn.also_sees())
+            elif t == "similar_tos":
+                expansions.update(similar.name() for similar in syn.similar_tos())
+            elif t == "verb_groups":
+                expansions.update(verb.name() for verb in syn.verb_groups())
+            else:
+                raise ValueError(f"Unknown synset type: {t}")
+            
+    return list(expansions)
 
 async def search_query(
     db: AsyncSession,
     dc_id: int,
     query: str,
+    synset: List[str],
     stem: bool,
     stopword: bool,
     query_tf: str,
@@ -173,45 +169,24 @@ async def search_query(
     dc = await get_document_collection_by_id(db, dc_id)
     if not dc:
         raise Exception("Document collection not found")
-    
-    # Search initial query
-    initial = search_internal(
-        dc,
-        query,
-        stem,
-        stopword,
-        query_tf,
-        query_idf,
-        query_norm,
-        doc_tf,
-        doc_idf,
-        doc_norm
-    )
 
-    # Tokenize
-    raw_tokens = word_tokenize(query.lower())
+    start_time = time.time()
+    initial = search_internal(dc, query, stem, stopword, query_tf, query_idf, query_norm, doc_tf, doc_idf, doc_norm)
 
-    # Expand synonyms using WordNet
-    synonym_set = set()
-    for token in raw_tokens:
-        synonym_set.update(get_wordnet_synonyms(token))
+    tokens = word_tokenize(query.lower())
+    tokens = [t.replace("_", " ") for t in tokens if t.isalnum() or "_" in t]
 
-    expanded_tokens = list(dict.fromkeys(raw_tokens + list(synonym_set)))
-    expanded_query = " ".join(expanded_tokens)
+    expansion_set = set()
+    for token in tokens:
+        expansion_set.update(get_wordnet_expansions(token, synset))
 
-    # Search expanded query
-    expanded = search_internal(
-        dc,
-        expanded_query,
-        stem,
-        stopword,
-        query_tf,
-        query_idf,
-        query_norm,
-        doc_tf,
-        doc_idf,
-        doc_norm
-    )
+    expansion_set -= set(tokens)
+    expanded_query = " ".join(tokens + sorted(expansion_set))
+
+    expanded = search_internal(dc, expanded_query, stem, stopword, query_tf, query_idf, query_norm, doc_tf, doc_idf, doc_norm)
+
+    elapsed_time = time.time() - start_time
+    print(f"[DEBUG] Search time: {elapsed_time:.2f} seconds")
 
     return {
         "initial_query": query,
@@ -219,5 +194,6 @@ async def search_query(
         "initial_results": initial["ranked_results"],
         "expanded_query": expanded_query,
         "expanded_query_vector": expanded["query_vector"],
-        "expanded_results": expanded["ranked_results"]
+        "expanded_results": expanded["ranked_results"],
+        "elapsed_time": elapsed_time,
     }
