@@ -4,6 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from nltk.data import find
 
+from app.api.endpoints import user, upload, document_collection, document, search
+
 try:
     find("tokenizers/punkt")
 except LookupError:
@@ -20,10 +22,7 @@ try:
 except LookupError:
     nltk.download("wordnet")
 
-from app.api.endpoints import user, upload, document_collection, document, search
-
 app = FastAPI()
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

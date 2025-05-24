@@ -105,7 +105,7 @@ async def search_batch(
         relevance_content = (await relevance.read()).decode('utf-8')
         settings_content = (await settings.read()).decode('utf-8')
 
-        print(f"[DEBUG] File contents length - Queries: {len(queries_content)}, Relevance: {len(relevance_content)}, Settings: {len(settings_content)}")
+        # print(f"[DEBUG] File contents length - Queries: {len(queries_content)}, Relevance: {len(relevance_content)}, Settings: {len(settings_content)}")
 
         if not queries_content or not relevance_content or not settings_content:
             raise HTTPException(status_code=400, detail="Input files cannot be empty")
@@ -117,9 +117,9 @@ async def search_batch(
         try:
             print("[DEBUG] Parsing queries file...")
             parsed_queries = parse_queries_file(queries_content)
-            print(f"[DEBUG] Parsed {len(parsed_queries)} queries")
-            for qid, qtext in list(parsed_queries.items())[:3]: 
-                print(f"[DEBUG] Query {qid}: {qtext[:100]}...")
+            # print(f"[DEBUG] Parsed {len(parsed_queries)} queries")
+            # for qid, qtext in list(parsed_queries.items())[:3]: 
+            #     print(f"[DEBUG] Query {qid}: {qtext[:100]}...")
         except Exception as e:
             print(f"[ERROR] Failed to parse queries file: {e}")
             raise HTTPException(status_code=400, detail=f"Error parsing queries file: {str(e)}")
@@ -127,20 +127,20 @@ async def search_batch(
         try:
             print("[DEBUG] Parsing relevance file...")
             parsed_relevance = parse_relevance_file(relevance_content)
-            print(f"[DEBUG] Parsed relevance for {len(parsed_relevance)} queries")
-            for qid, docs in list(parsed_relevance.items())[:3]:  # Show first 3
-                print(f"[DEBUG] Query {qid} relevant docs: {list(docs)[:5]}...")
+            # print(f"[DEBUG] Parsed relevance for {len(parsed_relevance)} queries")
+            # for qid, docs in list(parsed_relevance.items())[:3]:
+            #     print(f"[DEBUG] Query {qid} relevant docs: {list(docs)[:5]}...")
         except Exception as e:
             print(f"[ERROR] Failed to parse relevance file: {e}")
             raise HTTPException(status_code=400, detail=f"Error parsing relevance file: {str(e)}")
 
         try:
             print("[DEBUG] Parsing settings file...")
-            print(f"[DEBUG] Settings content preview:\n{settings_content[:500]}")
+            # print(f"[DEBUG] Settings content preview:\n{settings_content[:500]}")
             parsed_settings = parse_settings_file(settings_content)
-            print(f"[DEBUG] Parsed settings for {len(parsed_settings)} configurations")
-            for sid, settings in parsed_settings.items():
-                print(f"[DEBUG] Settings ID {sid}: {settings}")
+            # print(f"[DEBUG] Parsed settings for {len(parsed_settings)} configurations")
+            # for sid, settings in parsed_settings.items():
+            #     print(f"[DEBUG] Settings ID {sid}: {settings}")
         except Exception as e:
             print(f"[ERROR] Failed to parse settings file: {e}")
             print(f"[ERROR] Settings file content:\n{settings_content}")
@@ -156,14 +156,14 @@ async def search_batch(
             )
             print(f"[DEBUG] Created {len(queries)} query input objects")
             
-            # Debug first query object
-            if queries:
-                first_query = queries[0]
-                print(f"[DEBUG] First query object:")
-                print(f"  - query_id: {first_query.query_id}")
-                print(f"  - query_text: {first_query.query_text[:100]}...")
-                print(f"  - relevant_docs: {list(first_query.relevant_docs)[:5]}...")
-                print(f"  - settings: {first_query.settings}")
+            # # Debug first query object
+            # if queries:
+            #     first_query = queries[0]
+            #     print(f"[DEBUG] First query object:")
+            #     print(f"  - query_id: {first_query.query_id}")
+            #     print(f"  - query_text: {first_query.query_text[:100]}...")
+            #     print(f"  - relevant_docs: {list(first_query.relevant_docs)[:5]}...")
+            #     print(f"  - settings: {first_query.settings}")
         except Exception as e:
             print(f"[ERROR] Failed to create query input objects: {e}")
             import traceback

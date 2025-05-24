@@ -88,7 +88,17 @@ async def search_internal(
             doc_id_lookup[dc_doc_id] = await get_doc_id_by_dc(db, dc.id, dc_doc_id)
 
         term = entry["term"]
-        tf_weight = get_tf_weight(doc_tf, entry["tf_raw"])
+        if doc_tf == "raw":
+            tf_weight = entry["tf_raw"]
+        elif doc_tf == "log":
+            tf_weight = entry["tf_log"]
+        elif doc_tf == "augmented":
+            tf_weight = entry["tf_augmented"]
+        elif doc_tf == "binary":
+            tf_weight = entry["tf_binary"]
+        else:
+            raise ValueError(f"Unknown TF type: {doc_tf}")
+        
         if doc_idf:
             tf_weight *= entry["idf"]
         doc_vectors[dc_doc_id][term] = tf_weight
@@ -262,6 +272,7 @@ async def search_query_batch(
             )
 
             query_elapsed_time = time.time() - query_start_time
+            print(f"[DEBUG] Searching time {query_input_obj.query_id}: {query_elapsed_time} s")
             
             # Get results for MAP calculation
             initial_results = search_result['initial_results']
@@ -307,6 +318,8 @@ async def search_query_batch(
             continue
     
     batch_elapsed_time = time.time() - batch_start_time
+    print(f"[DEBUG] Searching time BATCH: {batch_elapsed_time} s")
+
     # Calculate MAP scores using your existing function
     map_initial = calculate_mean_average_precision(all_initial_results, all_relevant_docs)
     map_expanded = calculate_mean_average_precision(all_expanded_results, all_relevant_docs)

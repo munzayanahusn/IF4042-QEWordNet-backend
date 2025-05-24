@@ -33,10 +33,10 @@ def compute_idf(df: int, N: int) -> float:
 def calculate_average_precision(ranked_results: List[Dict], relevant_docs: Set[int]) -> float:
     """Calculate Average Precision (AP)"""
 
-    print("[DEBUG] AVERAGE PRECISION")
-    print(ranked_results)
-    print(relevant_docs)
-    
+    # print("[DEBUG] AVERAGE PRECISION")
+    # print(ranked_results)
+    # print(relevant_docs)
+
     if not relevant_docs:
         return 0.0
     
@@ -44,7 +44,7 @@ def calculate_average_precision(ranked_results: List[Dict], relevant_docs: Set[i
     relevant_count = 0
     
     for i, result in enumerate(ranked_results):
-        if result['doc_id'] in relevant_docs:
+        if result['dc_doc_id'] in relevant_docs:
             relevant_count += 1
             precision = relevant_count / (i + 1)
             precisions.append(precision)
