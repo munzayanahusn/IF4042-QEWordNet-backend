@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.calculation import preprocess_tokens, compute_tf_log, compute_tf_augmented, compute_tf_binary, compute_idf
 from app.crud.document_collection import get_document_collection_by_id
+from app.crud.document import get_doc_id_by_dc
 from app.schemas.inverted import InvertedEntry
 
 
@@ -59,7 +60,8 @@ def get_tf_weight(tf_type: str, tf_raw: int, doc_tokens=None) -> float:
     else:
         raise ValueError(f"Unknown TF type: {tf_type}")
 
-def search_internal(
+async def search_internal(
+    db: AsyncSession,
     dc,
     query: str,
     stem: bool,
@@ -77,13 +79,18 @@ def search_internal(
 
     doc_vectors = defaultdict(lambda: defaultdict(float))
     idf_lookup = {}
+    doc_id_lookup = {}
+
     for entry in inverted_data:
+        dc_doc_id = entry["doc_id"]
+        if dc_doc_id not in doc_id_lookup:
+            doc_id_lookup[dc_doc_id] = await get_doc_id_by_dc(db, dc.id, dc_doc_id)
+
         term = entry["term"]
-        doc_id = entry["doc_id"]
         tf_weight = get_tf_weight(doc_tf, entry["tf_raw"])
         if doc_idf:
             tf_weight *= entry["idf"]
-        doc_vectors[doc_id][term] = tf_weight
+        doc_vectors[dc_doc_id][term] = tf_weight
         idf_lookup[term] = entry["idf"]
 
     tokens = word_tokenize(query.lower())
@@ -103,7 +110,7 @@ def search_internal(
         query_vector[term] = tf_weight
 
     results = []
-    for doc_id, vector in doc_vectors.items():
+    for dc_doc_id, vector in doc_vectors.items():
         dot_product = sum(query_vector[t] * vector.get(t, 0.0) for t in query_vector)
 
         if query_norm:
@@ -115,7 +122,8 @@ def search_internal(
             dot_product /= d_norm if d_norm != 0 else 1
 
         results.append({
-            "doc_id": doc_id,
+            "doc_id": doc_id_lookup[dc_doc_id],
+            "dc_doc_id": dc_doc_id,
             "score": dot_product
         })
 
@@ -123,7 +131,8 @@ def search_internal(
     return {
         "ranked_results": [
             {
-                "doc_id": r["doc_id"], 
+                "doc_id": r["doc_id"],
+                "dc_doc_id": r["dc_doc_id"], 
                 "score": r["score"], 
                 "rank": i + 1}
             for i, r in enumerate(ranked)
@@ -171,7 +180,7 @@ async def search_query(
         raise Exception("Document collection not found")
 
     start_time = time.time()
-    initial = search_internal(dc, query, stem, stopword, query_tf, query_idf, query_norm, doc_tf, doc_idf, doc_norm)
+    initial = await search_internal(db, dc, query, stem, stopword, query_tf, query_idf, query_norm, doc_tf, doc_idf, doc_norm)
 
     tokens = word_tokenize(query.lower())
     tokens = [t.replace("_", " ") for t in tokens if t.isalnum() or "_" in t]
@@ -183,7 +192,7 @@ async def search_query(
     expansion_set -= set(tokens)
     expanded_query = " ".join(tokens + sorted(expansion_set))
 
-    expanded = search_internal(dc, expanded_query, stem, stopword, query_tf, query_idf, query_norm, doc_tf, doc_idf, doc_norm)
+    expanded = await search_internal(db, dc, expanded_query, stem, stopword, query_tf, query_idf, query_norm, doc_tf, doc_idf, doc_norm)
 
     elapsed_time = time.time() - start_time
     print(f"[DEBUG] Search time: {elapsed_time:.2f} seconds")
