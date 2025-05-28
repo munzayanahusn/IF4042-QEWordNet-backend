@@ -159,18 +159,20 @@ def get_wordnet_expansions(word: str, types: List[str]) -> List[str]:
     expansions = set()
     for syn in wordnet.synsets(word):
         for t in types:
-            if t == "lemmas":
-                expansions.update(syn.lemma_names())
-            elif t == "hyponyms":
-                expansions.update(hypo.name().split('.')[0] for hypo in syn.hyponyms())
-            elif t == "hypernyms":
-                expansions.update(hyper.name().split('.')[0] for hyper in syn.hypernyms())
-            elif t == "also_sees":
-                expansions.update(also.name().split('.')[0] for also in syn.also_sees())
-            elif t == "similar_tos":
-                expansions.update(similar.name().split('.')[0] for similar in syn.similar_tos())
-            elif t == "verb_groups":
-                expansions.update(verb.name().split('.')[0] for verb in syn.verb_groups())
+            if t == "synset":
+                expansions.add(syn.name().split('.')[0].replace('_', ' '))
+            elif t == "lemma":
+                expansions.update(name.replace('_', ' ') for name in syn.lemma_names())
+            elif t == "hyponym":
+                expansions.update(hypo.name().split('.')[0].replace('_', ' ') for hypo in syn.hyponyms())
+            elif t == "hypernym":
+                expansions.update(hyper.name().split('.')[0].replace('_', ' ') for hyper in syn.hypernyms())
+            elif t == "also_see":
+                expansions.update(also.name().split('.')[0].replace('_', ' ') for also in syn.also_sees())
+            elif t == "similar_to":
+                expansions.update(similar.name().split('.')[0].replace('_', ' ') for similar in syn.similar_tos())
+            elif t == "verb_group":
+                expansions.update(verb.name().split('.')[0].replace('_', ' ') for verb in syn.verb_groups())
             else:
                 raise ValueError(f"Unknown synset type: {t}")
             
@@ -212,10 +214,8 @@ async def search_query(
 
     expansion_set -= set(tokens)
     expanded_query = " ".join(tokens + sorted(expansion_set))
-
     expanded = await search_internal(db, dc, expanded_query, stem, stopword, query_tf, query_idf, query_norm, doc_tf, doc_idf, doc_norm)
 
-    expanded_query = expanded_query.replace('_', ' ')
     elapsed_time = time.time() - start_time
     print(f"[DEBUG] Search time: {elapsed_time:.2f} seconds")
 

@@ -10,13 +10,14 @@ import asyncio
 from app.services.calculation import compute_tf_log, compute_tf_binary, compute_tf_augmented, compute_idf, preprocess_tokens
 from app.schemas.query import QueryInput
 
-VALID_SYNSET_TYPES = {
-    "lemmas",
-    "hyponyms",
-    "hypernyms",
-    "also_sees",
-    "similar_tos",
-    "verb_groups"
+VALID_SYNSET_TYPES = {\
+    "synset",
+    "lemma",
+    "hyponym",
+    "hypernym",
+    "also_see",
+    "similar_to",
+    "verb_group"
 }
 
 def process_single_doc(doc, use_stop, use_stem):
