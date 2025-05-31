@@ -241,8 +241,9 @@ def parse_settings_file(content: str) -> Dict[int, Dict]:
     settings = {}
     current_query_id = None
     current_setting = {}
+    current_key = None
     
-    lines = content.strip().split('\n')
+    lines = content.strip().splitlines()
     
     for line in lines:
         line = line.strip()
@@ -252,12 +253,12 @@ def parse_settings_file(content: str) -> Dict[int, Dict]:
         if line.startswith('.I '):
             # Save previous setting if exists
             if current_query_id is not None:
-                settings[current_query_id] = current_setting.copy()
+                settings[current_query_id] = current_setting
             
             # Start new setting
-            query_id_str = line[3:].strip()
-            current_query_id = 0 if query_id_str == '0' else int(query_id_str)
-            current_setting = {'synsets': []}
+            current_query_id = int(line[2:].strip())
+            current_setting = {}
+            current_key = None
             
         elif line.startswith('.S '):
             smart_notation = line[3:].strip()
@@ -275,16 +276,23 @@ def parse_settings_file(content: str) -> Dict[int, Dict]:
                 raise ValueError(f"Error parsing smart notation: {e}")
                 
         elif line.startswith('.SM '):
-            current_setting['stem'] = line[4:].strip().lower() == 'true'
+            current_setting['stem'] = line[3:].strip().lower() == 'true'
             
         elif line.startswith('.SW '):
-            current_setting['stopword'] = line[4:].strip().lower() == 'true'
+            current_setting['stopword'] = line[3:].strip().lower() == 'true'
             
-        elif line.startswith('.SY '):
-            # Synsets start here, following lines are synset types
-            pass
-        elif current_setting is not None and line in VALID_SYNSET_TYPES:
-            current_setting['synsets'].append(line)
+        elif line.startswith(".SY"):
+            current_key = "synsets"
+            current_setting[current_key] = []
+        
+        elif line.startswith("."):
+            # Unknown or unsupported field
+            current_key = None
+            
+        else:
+            # Multi-line value
+            if current_key:
+                current_setting[current_key].append(line.strip())
     
     # Save last setting
     if current_query_id is not None:

@@ -1,9 +1,9 @@
 import time
 import json
-
 from fastapi import APIRouter, Query, HTTPException, Depends, File, UploadFile, Form, Response
 from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.db.session import AsyncSessionLocal
 from app.services.search_engine import search_query, search_query_batch
 from app.services.parser import (
@@ -97,7 +97,8 @@ async def search_batch(
 ):
     """Batch search endpoint with MAP evaluation and formatted output"""
     
-    try:        
+    try:
+        start_parse = time.time()        
         print(f"[DEBUG] Starting batch search with dc_id: {dc_id}, filename: {filename}")
 
         # Read and parse input files
@@ -169,13 +170,16 @@ async def search_batch(
             import traceback
             traceback.print_exc()
             raise HTTPException(status_code=400, detail=f"Error creating query objects: {str(e)}")
-
+        
+        elapsed_parsing_time = time.time() - start_parse
+        start_search = time.time()
         try:
             print("[DEBUG] Starting batch search...")
             results = await search_query_batch(
                 db=db,
                 dc_id=dc_id,
                 queries=queries,
+                parallel=True
             )
             print(f"[DEBUG] Batch search completed successfully")
             print(f"[DEBUG] MAP Initial: {results['map_initial']:.4f}")
@@ -186,6 +190,10 @@ async def search_batch(
             import traceback
             traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"Error during batch search: {str(e)}")
+        
+        elapsed_search_time = time.time() - start_search
+        print("[DEBUG] Parsing Time:", elapsed_parsing_time)
+        print("[DEBUG] Searching Time:", elapsed_search_time)
 
         if download:
             response_data = {
