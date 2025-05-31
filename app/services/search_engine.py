@@ -3,11 +3,18 @@ import os
 import math
 import glob
 import time
+import asyncio
+import numpy as np
 from collections import defaultdict, Counter
 from typing import Dict, List
+from functools import lru_cache
+from tqdm import tqdm
+from tqdm.asyncio import tqdm_asyncio
+
 from nltk.tokenize import word_tokenize
 from nltk.corpus import wordnet
 from sqlalchemy.ext.asyncio import AsyncSession
+from concurrent.futures import ThreadPoolExecutor
 
 from app.services.calculation import preprocess_tokens, compute_tf_log, compute_tf_augmented, compute_tf_binary, compute_idf, calculate_average_precision, calculate_mean_average_precision
 from app.services.utils import create_retrieval_comparison, create_term_weights_comparison, generate_formatted_output
@@ -15,6 +22,8 @@ from app.crud.document_collection import get_document_collection_by_id
 from app.crud.document import get_doc_id_by_dc
 from app.schemas.inverted import InvertedEntry
 from app.schemas.query import QueryInput
+
+_inverted_index_cache = {}
 
 def load_inverted_index(file_path: str) -> List[Dict]:
     with open(file_path, "r", encoding="utf-8") as f:
@@ -52,6 +61,15 @@ def read_inverted_file_by_dc(dc, stem: bool, stopword: bool):
 
     return load_inverted_index(candidate_files[0])
 
+def read_inverted_file_by_dc_cached(dc, stem: bool, stopword: bool):
+    key = (dc.id, stem, stopword)
+    if key in _inverted_index_cache:
+        return _inverted_index_cache[key]
+
+    data = read_inverted_file_by_dc(dc, stem, stopword)
+    _inverted_index_cache[key] = data
+    return data
+
 def get_tf_weight(tf_type: str, tf_raw: int, doc_tokens=None) -> float:
     if tf_type == "raw":
         return tf_raw
@@ -64,6 +82,23 @@ def get_tf_weight(tf_type: str, tf_raw: int, doc_tokens=None) -> float:
         return compute_tf_binary(tf_raw)
     else:
         raise ValueError(f"Unknown TF type: {tf_type}")
+    
+def score_doc(dc_doc_id, vector, query_vector, doc_id_lookup, query_norm, doc_norm):
+    dot_product = sum(query_vector[t] * vector.get(t, 0.0) for t in query_vector)
+
+    if query_norm:
+        q_norm = math.sqrt(sum(v**2 for v in query_vector.values()))
+        dot_product /= q_norm if q_norm != 0 else 1
+
+    if doc_norm:
+        d_norm = math.sqrt(sum(v**2 for v in vector.values()))
+        dot_product /= d_norm if d_norm != 0 else 1
+
+    return {
+        "doc_id": doc_id_lookup[dc_doc_id],
+        "dc_doc_id": dc_doc_id,
+        "score": dot_product
+    }
 
 async def search_internal(
     db: AsyncSession,
@@ -78,7 +113,7 @@ async def search_internal(
     doc_idf: bool,
     doc_norm: bool
 ):
-    inverted_data = read_inverted_file_by_dc(dc, stem, stopword)
+    inverted_data = read_inverted_file_by_dc_cached(dc, stem, stopword)
     if not inverted_data:
         raise Exception("No inverted data found")
 
@@ -124,25 +159,70 @@ async def search_internal(
             tf_weight *= idf_lookup.get(term, 0)
         query_vector[term] = tf_weight
 
+    # args = [
+    #     (dc_doc_id, vector, query_vector, doc_id_lookup, query_norm, doc_norm)
+    #     for dc_doc_id, vector in doc_vectors.items()
+    # ]
+
+    # results = []
+    # with ThreadPoolExecutor() as executor:
+    #     futures = [
+    #         executor.submit(score_doc, *arg)
+    #         for arg in args
+    #     ]
+    #     for future in futures:
+    #         results.append(future.result())
+
+    # ranked = sorted(results, key=lambda x: x["score"], reverse=True)
+
+    # Build vocab
+    vocab = sorted({entry["term"] for entry in inverted_data})
+    term_to_index = {term: idx for idx, term in enumerate(vocab)}
+    vocab_size = len(vocab)
+
+    # Build doc matrix
+    doc_ids = sorted(doc_vectors.keys())
+    doc_id_to_index = {doc_id: idx for idx, doc_id in enumerate(doc_ids)}
+    doc_matrix = np.zeros((len(doc_ids), vocab_size), dtype=np.float32)
+
+    for doc_id, vector in doc_vectors.items():
+        for term, weight in vector.items():
+            if term in term_to_index:
+                doc_matrix[doc_id_to_index[doc_id], term_to_index[term]] = weight
+
+    # Build query vector
+    query_vec = np.zeros(vocab_size, dtype=np.float32)
+    for term, tf in query_counts.items():
+        idx = term_to_index.get(term)
+        if idx is not None:
+            tf_weight = get_tf_weight(query_tf, tf, tokens)
+            if query_idf:
+                tf_weight *= idf_lookup.get(term, 0)
+            query_vec[idx] = tf_weight
+
+    # Compute dot product
+    scores = np.dot(doc_matrix, query_vec)
+
+    if query_norm:
+        q_norm = np.linalg.norm(query_vec)
+        scores = scores / (q_norm if q_norm != 0 else 1)
+
+    if doc_norm:
+        doc_norms = np.linalg.norm(doc_matrix, axis=1)
+        scores = scores / np.where(doc_norms != 0, doc_norms, 1)
+
+    # Format results
     results = []
-    for dc_doc_id, vector in doc_vectors.items():
-        dot_product = sum(query_vector[t] * vector.get(t, 0.0) for t in query_vector)
-
-        if query_norm:
-            q_norm = math.sqrt(sum(v**2 for v in query_vector.values()))
-            dot_product /= q_norm if q_norm != 0 else 1
-
-        if doc_norm:
-            d_norm = math.sqrt(sum(v**2 for v in vector.values()))
-            dot_product /= d_norm if d_norm != 0 else 1
-
+    for i, score in enumerate(scores):
+        dc_doc_id = doc_ids[i]
         results.append({
             "doc_id": doc_id_lookup[dc_doc_id],
             "dc_doc_id": dc_doc_id,
-            "score": dot_product
+            "score": float(score)
         })
 
     ranked = sorted(results, key=lambda x: x["score"], reverse=True)
+
     return {
         "ranked_results": [
             {
@@ -159,19 +239,19 @@ def get_wordnet_expansions(word: str, types: List[str]) -> List[str]:
     expansions = set()
     for syn in wordnet.synsets(word):
         for t in types:
-            if t == "synset":
+            if t == "synset" or t == "synsets":
                 expansions.add(syn.name().split('.')[0].replace('_', ' '))
-            elif t == "lemma":
+            elif t == "lemma" or t == "lemmas":
                 expansions.update(name.replace('_', ' ') for name in syn.lemma_names())
-            elif t == "hyponym":
+            elif t == "hyponym" or t == "hyponyms":
                 expansions.update(hypo.name().split('.')[0].replace('_', ' ') for hypo in syn.hyponyms())
-            elif t == "hypernym":
+            elif t == "hypernym" or t == "hypernyms":
                 expansions.update(hyper.name().split('.')[0].replace('_', ' ') for hyper in syn.hypernyms())
-            elif t == "also_see":
+            elif t == "also_see" or t == "also_sees":
                 expansions.update(also.name().split('.')[0].replace('_', ' ') for also in syn.also_sees())
-            elif t == "similar_to":
+            elif t == "similar_to" or t == "similar_tos":
                 expansions.update(similar.name().split('.')[0].replace('_', ' ') for similar in syn.similar_tos())
-            elif t == "verb_group":
+            elif t == "verb_group" or t == "verb_groups":
                 expansions.update(verb.name().split('.')[0].replace('_', ' ') for verb in syn.verb_groups())
             else:
                 raise ValueError(f"Unknown synset type: {t}")
@@ -217,7 +297,7 @@ async def search_query(
     expanded = await search_internal(db, dc, expanded_query, stem, stopword, query_tf, query_idf, query_norm, doc_tf, doc_idf, doc_norm)
 
     elapsed_time = time.time() - start_time
-    print(f"[DEBUG] Search time: {elapsed_time:.2f} seconds")
+    # print(f"[DEBUG] Search time: {elapsed_time:.2f} seconds")
 
     return {
         "initial_query": query,
@@ -232,97 +312,181 @@ async def search_query(
 async def search_query_batch(
     db: AsyncSession, 
     dc_id: int,
-    queries: List[QueryInput]
+    queries: List[QueryInput],
+    parallel: bool = False
 ) -> Dict:
     """
-    Batch search function that processes multiple queries
-    
+    Batch search function that processes multiple queries concurrently.
+
     Args:
         db: Database session
         dc_id: Document collection ID
         queries: List of QueryInput objects containing query details
-        
+
     Returns:
         Dict containing MAP scores and detailed results
     """
-    # Process each query
-    query_results = []
-    all_initial_results = {} 
-    all_expanded_results = {} 
-    all_relevant_docs = {}
     batch_start_time = time.time()
-    
-    for query_input_obj in queries:
-        try:
-            # Access QueryInput object attributes correctly
-            query_id = query_input_obj.query_id
 
-            # Perform search
-            query_start_time = time.time()
+    if parallel:
+        pbar = tqdm(total=len(queries), desc="Processing Queries", ascii=True)
+        semaphore = asyncio.Semaphore(10)
 
-            search_result = await search_query(
-                db=db, 
-                dc_id=dc_id,
-                query=query_input_obj.query_text,
-                synset=query_input_obj.settings.get('synsets', []),
-                stem=query_input_obj.settings.get('stem', False),
-                stopword=query_input_obj.settings.get('stopword', False),
-                query_tf=query_input_obj.settings.get('query_tf', 'raw'),
-                query_idf=query_input_obj.settings.get('query_idf', False),
-                query_norm=query_input_obj.settings.get('query_norm', False),
-                doc_tf=query_input_obj.settings.get('doc_tf', 'raw'),
-                doc_idf=query_input_obj.settings.get('doc_idf', False),
-                doc_norm=query_input_obj.settings.get('doc_norm', False)
-            )
+        query_results = []
+        all_initial_results = {}
+        all_expanded_results = {}
+        all_relevant_docs = {}
 
-            query_elapsed_time = time.time() - query_start_time
-            print(f"[DEBUG] Searching time {query_input_obj.query_id}: {query_elapsed_time} s")
-            
-            # Get results for MAP calculation
-            initial_results = search_result['initial_results']
-            expanded_results = search_result.get('expanded_results', [])
-            relevant_docs = query_input_obj.relevant_docs
+        async def process_query(query_input_obj: QueryInput):
+            async with semaphore:
+                try:
+                    query_id = query_input_obj.query_id
+                    query_start_time = time.time()
 
-            # Store for MAP calculation
-            all_initial_results[query_id] = initial_results
-            all_expanded_results[query_id] = expanded_results
-            all_relevant_docs[query_id] = relevant_docs
-            
-            # Calculate individual AP scores
-            initial_ap = calculate_average_precision(initial_results, relevant_docs)
-            expanded_ap = calculate_average_precision(expanded_results, relevant_docs) if expanded_results else 0
-            
-            # Create retrieval comparison data
-            retrieval_comparison = create_retrieval_comparison(initial_results, expanded_results)
-            
-            # Get term weights comparison
-            initial_query_vector = search_result.get('initial_query_vector', {})
-            expanded_query_vector = search_result.get('expanded_query_vector', {})
-            term_weights = create_term_weights_comparison(initial_query_vector, expanded_query_vector)
+                    search_result = await search_query(
+                        db=db,
+                        dc_id=dc_id,
+                        query=query_input_obj.query_text,
+                        synset=query_input_obj.settings.get('synsets', []),
+                        stem=query_input_obj.settings.get('stem', False),
+                        stopword=query_input_obj.settings.get('stopword', False),
+                        query_tf=query_input_obj.settings.get('query_tf', 'raw'),
+                        query_idf=query_input_obj.settings.get('query_idf', False),
+                        query_norm=query_input_obj.settings.get('query_norm', False),
+                        doc_tf=query_input_obj.settings.get('doc_tf', 'raw'),
+                        doc_idf=query_input_obj.settings.get('doc_idf', False),
+                        doc_norm=query_input_obj.settings.get('doc_norm', False)
+                    )
 
-            # Get expanded query from search result
-            expanded_query = search_result.get('expanded_query', '')
-            
-            query_result = {
-                'query_id': f'q{query_id:03d}',
-                'initial_query': query_input_obj.query_text,
-                'expanded_query': expanded_query,
-                'initial_ap': initial_ap,
-                'expanded_ap': expanded_ap,
-                'term_weights': term_weights,
-                'retrieval_comparison': retrieval_comparison,
-                'relevant_docs': relevant_docs,
-                'elapsed_time': query_elapsed_time
-            }
-            
-            query_results.append(query_result)
+                    query_elapsed_time = time.time() - query_start_time
 
-        except Exception as e:
-            print(f"Error processing query {query_input_obj.query_id}: {str(e)}")
-            continue
-    
+                    initial_results = search_result['initial_results']
+                    expanded_results = search_result.get('expanded_results', [])
+                    relevant_docs = query_input_obj.relevant_docs
+
+                    initial_ap = calculate_average_precision(initial_results, relevant_docs)
+                    expanded_ap = calculate_average_precision(expanded_results, relevant_docs) if expanded_results else 0
+
+                    retrieval_comparison = create_retrieval_comparison(initial_results, expanded_results)
+                    term_weights = create_term_weights_comparison(
+                        search_result.get('initial_query_vector', {}),
+                        search_result.get('expanded_query_vector', {})
+                    )
+
+                    result = {
+                        'query_id': f'q{query_id:03d}',
+                        'initial_query': query_input_obj.query_text,
+                        'expanded_query': search_result.get('expanded_query', ''),
+                        'initial_ap': initial_ap,
+                        'expanded_ap': expanded_ap,
+                        'term_weights': term_weights,
+                        'retrieval_comparison': retrieval_comparison,
+                        'relevant_docs': relevant_docs,
+                        'elapsed_time': query_elapsed_time,
+                        'initial_results': initial_results,
+                        'expanded_results': expanded_results
+                    }
+                    return result
+
+                except Exception as e:
+                    print(f"[ERROR] Failed to process query {query_input_obj.query_id}: {e}")
+                    return None
+
+                finally:
+                    pbar.update(1)
+
+        # Run all tasks
+        tasks = [process_query(q) for q in queries]
+        search_outputs = await asyncio.gather(*tasks)
+
+        pbar.close()
+
+        for result in search_outputs:
+            if result is None:
+                continue
+            query_id_int = int(result["query_id"][1:])
+            query_results.append(result)
+            all_initial_results[query_id_int] = result["initial_results"]
+            all_expanded_results[query_id_int] = result["expanded_results"]
+            all_relevant_docs[query_id_int] = result["relevant_docs"]
+
+    else:
+        # Process each query
+        query_results = []
+        all_initial_results = {} 
+        all_expanded_results = {} 
+        all_relevant_docs = {}
+        
+        for query_input_obj in queries:
+            try:
+                # Access QueryInput object attributes correctly
+                query_id = query_input_obj.query_id
+
+                # Perform search
+                query_start_time = time.time()
+
+                search_result = await search_query(
+                    db=db, 
+                    dc_id=dc_id,
+                    query=query_input_obj.query_text,
+                    synset=query_input_obj.settings.get('synsets', []),
+                    stem=query_input_obj.settings.get('stem', False),
+                    stopword=query_input_obj.settings.get('stopword', False),
+                    query_tf=query_input_obj.settings.get('query_tf', 'raw'),
+                    query_idf=query_input_obj.settings.get('query_idf', False),
+                    query_norm=query_input_obj.settings.get('query_norm', False),
+                    doc_tf=query_input_obj.settings.get('doc_tf', 'raw'),
+                    doc_idf=query_input_obj.settings.get('doc_idf', False),
+                    doc_norm=query_input_obj.settings.get('doc_norm', False)
+                )
+
+                query_elapsed_time = time.time() - query_start_time
+                
+                # Get results for MAP calculation
+                initial_results = search_result['initial_results']
+                expanded_results = search_result.get('expanded_results', [])
+                relevant_docs = query_input_obj.relevant_docs
+
+                # Store for MAP calculation
+                all_initial_results[query_id] = initial_results
+                all_expanded_results[query_id] = expanded_results
+                all_relevant_docs[query_id] = relevant_docs
+                
+                # Calculate individual AP scores
+                initial_ap = calculate_average_precision(initial_results, relevant_docs)
+                expanded_ap = calculate_average_precision(expanded_results, relevant_docs) if expanded_results else 0
+                
+                # Create retrieval comparison data
+                retrieval_comparison = create_retrieval_comparison(initial_results, expanded_results)
+                
+                # Get term weights comparison
+                initial_query_vector = search_result.get('initial_query_vector', {})
+                expanded_query_vector = search_result.get('expanded_query_vector', {})
+                term_weights = create_term_weights_comparison(initial_query_vector, expanded_query_vector)
+
+                # Get expanded query from search result
+                expanded_query = search_result.get('expanded_query', '')
+                
+                query_result = {
+                    'query_id': f'q{query_id:03d}',
+                    'initial_query': query_input_obj.query_text,
+                    'expanded_query': expanded_query,
+                    'initial_ap': initial_ap,
+                    'expanded_ap': expanded_ap,
+                    'term_weights': term_weights,
+                    'retrieval_comparison': retrieval_comparison,
+                    'relevant_docs': relevant_docs,
+                    'elapsed_time': query_elapsed_time
+                }
+                
+                query_results.append(query_result)
+
+            except Exception as e:
+                print(f"Error processing query {query_input_obj.query_id}: {str(e)}")
+                continue
+
     batch_elapsed_time = time.time() - batch_start_time
-    print(f"[DEBUG] Searching time BATCH: {batch_elapsed_time} s")
+    print(f"[DEBUG] Searching time BATCH: {batch_elapsed_time:.2f} s")
 
     # Calculate MAP scores using your existing function
     map_initial = calculate_mean_average_precision(all_initial_results, all_relevant_docs)
@@ -330,7 +494,7 @@ async def search_query_batch(
     
     # Generate formatted output file
     output_content = generate_formatted_output(map_initial, map_expanded, query_results)
-    
+
     return {
         'elapsed_time': batch_elapsed_time,
         'map_initial': map_initial,
@@ -338,7 +502,7 @@ async def search_query_batch(
         'query_results': [{
             'query_id': qr['query_id'],
             'initial_query': qr['initial_query'],
-            'expanded_query': qr['expanded_query'], 
+            'expanded_query': qr['expanded_query'],
             'initial_ap': qr['initial_ap'],
             'expanded_ap': qr['expanded_ap']
         } for qr in query_results],
