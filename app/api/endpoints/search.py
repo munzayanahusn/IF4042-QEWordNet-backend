@@ -24,7 +24,7 @@ async def get_db():
 async def search(
     dc_id: int,
     query: str,
-    synset: List[str] = Query(None),
+    synset: List[str] = Query(default=[]),
     stem: bool = False,
     stopword: bool = False,
     query_tf: str = Query("raw", enum=["raw", "log", "augmented", "binary"]),
