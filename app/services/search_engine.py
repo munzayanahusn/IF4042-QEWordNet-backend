@@ -147,10 +147,6 @@ async def search_internal(
     tokens = word_tokenize(query.lower())
     tokens = [t.replace("_", " ") for t in tokens if t.isalnum() or "_" in t]
 
-    # print("[DEBUG] Tokens before preprocessing:", tokens)
-    tokens = preprocess_tokens(tokens, stopword, stem)
-    # print("[DEBUG] Tokens after preprocessing:", tokens)
-
     query_counts = Counter(tokens)
 
     query_vector = {}
@@ -284,34 +280,33 @@ async def search_query(
         raise Exception("Document collection not found")
 
     start_time = time.time()
-    initial = await search_internal(db, dc, query, stem, stopword, query_tf, query_idf, query_norm, doc_tf, doc_idf, doc_norm)
 
     tokens = word_tokenize(query.lower())
     tokens = [t.replace("_", " ") for t in tokens if t.isalnum() or "_" in t]
 
+    preprocessed_tokens = preprocess_tokens(tokens, stopword, stem)
+    initial_query = " ".join(preprocessed_tokens)
+
+    initial = await search_internal(db, dc, initial_query, stem, stopword, query_tf, query_idf, query_norm, doc_tf, doc_idf, doc_norm)
+    
     expansion_set = set()
-    for token in tokens:
+    for token in preprocessed_tokens:
         expansion_set.update(get_wordnet_expansions(token, synset))
 
-    expansion_set -= set(tokens)
-    expanded_query = " ".join(tokens + sorted(expansion_set))
+    expansion_set -= set(preprocessed_tokens)
+    expanded_tokens = preprocessed_tokens + sorted(expansion_set)
+    expanded_query = " ".join(expanded_tokens)
+
     expanded = await search_internal(db, dc, expanded_query, stem, stopword, query_tf, query_idf, query_norm, doc_tf, doc_idf, doc_norm)
 
     elapsed_time = time.time() - start_time
     # print(f"[DEBUG] Search time: {elapsed_time:.2f} seconds")
 
-    preprocessed_query = preprocess_tokens(tokens, stopword, stem)
-    preprocessed_query = " ".join(preprocessed_query)
-
-    all_tokens = tokens + list(expansion_set)
-    preprocessed_expanded = preprocess_tokens(all_tokens, stopword, stem)
-    preprocessed_expanded = " ".join(preprocessed_expanded)
-
     return {
-        "initial_query": preprocessed_query,
+        "initial_query": initial_query,
         "initial_query_vector": initial["query_vector"],
         "initial_results": initial["ranked_results"],
-        "expanded_query": preprocessed_expanded,
+        "expanded_query": expanded_query,
         "expanded_query_vector": expanded["query_vector"],
         "expanded_results": expanded["ranked_results"],
         "elapsed_time": elapsed_time,
