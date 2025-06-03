@@ -20,6 +20,7 @@ from app.services.calculation import preprocess_tokens, compute_tf_log, compute_
 from app.services.utils import create_retrieval_comparison, create_term_weights_comparison, generate_formatted_output
 from app.crud.document_collection import get_document_collection_by_id
 from app.crud.document import get_doc_id_by_dc
+from app.services.calculation import preprocess_tokens
 from app.schemas.inverted import InvertedEntry
 from app.schemas.query import QueryInput
 
@@ -299,11 +300,18 @@ async def search_query(
     elapsed_time = time.time() - start_time
     # print(f"[DEBUG] Search time: {elapsed_time:.2f} seconds")
 
+    preprocessed_query = preprocess_tokens(tokens, stopword, stem)
+    preprocessed_query = " ".join(preprocessed_query)
+
+    all_tokens = tokens + list(expansion_set)
+    preprocessed_expanded = preprocess_tokens(all_tokens, stopword, stem)
+    preprocessed_expanded = " ".join(preprocessed_expanded)
+
     return {
-        "initial_query": query,
+        "initial_query": preprocessed_query,
         "initial_query_vector": initial["query_vector"],
         "initial_results": initial["ranked_results"],
-        "expanded_query": expanded_query,
+        "expanded_query": preprocessed_expanded,
         "expanded_query_vector": expanded["query_vector"],
         "expanded_results": expanded["ranked_results"],
         "elapsed_time": elapsed_time,
@@ -375,7 +383,7 @@ async def search_query_batch(
 
                     result = {
                         'query_id': f'q{query_id:03d}',
-                        'initial_query': query_input_obj.query_text,
+                        'initial_query': search_result.get('initial_query', ''),
                         'expanded_query': search_result.get('expanded_query', ''),
                         'initial_ap': initial_ap,
                         'expanded_ap': expanded_ap,

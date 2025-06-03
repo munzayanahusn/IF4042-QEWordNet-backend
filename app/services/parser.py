@@ -253,6 +253,17 @@ def parse_settings_file(content: str) -> Dict[int, Dict]:
         if line.startswith('.I '):
             # Save previous setting if exists
             if current_query_id is not None:
+                # Apply default values if missing
+                current_setting.setdefault('query_tf', 'raw')
+                current_setting.setdefault('query_idf', False)
+                current_setting.setdefault('query_norm', False)
+                current_setting.setdefault('doc_tf', 'raw')
+                current_setting.setdefault('doc_idf', False)
+                current_setting.setdefault('doc_norm', False)
+                current_setting.setdefault('stem', False)
+                current_setting.setdefault('stopword', False)
+                current_setting.setdefault('synsets', [])
+
                 settings[current_query_id] = current_setting
             
             # Start new setting
@@ -288,7 +299,7 @@ def parse_settings_file(content: str) -> Dict[int, Dict]:
         elif line.startswith("."):
             # Unknown or unsupported field
             current_key = None
-            
+
         else:
             # Multi-line value
             if current_key:
@@ -296,6 +307,16 @@ def parse_settings_file(content: str) -> Dict[int, Dict]:
     
     # Save last setting
     if current_query_id is not None:
+        current_setting.setdefault('query_tf', 'raw')
+        current_setting.setdefault('query_idf', False)
+        current_setting.setdefault('query_norm', False)
+        current_setting.setdefault('doc_tf', 'raw')
+        current_setting.setdefault('doc_idf', False)
+        current_setting.setdefault('doc_norm', False)
+        current_setting.setdefault('stem', False)
+        current_setting.setdefault('stopword', False)
+        current_setting.setdefault('synsets', [])
+        
         settings[current_query_id] = current_setting
     
     return settings

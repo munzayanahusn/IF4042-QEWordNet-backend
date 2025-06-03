@@ -139,9 +139,12 @@ async def search_batch(
             print("[DEBUG] Parsing settings file...")
             # print(f"[DEBUG] Settings content preview:\n{settings_content[:500]}")
             parsed_settings = parse_settings_file(settings_content)
-            # print(f"[DEBUG] Parsed settings for {len(parsed_settings)} configurations")
-            # for sid, settings in parsed_settings.items():
-            #     print(f"[DEBUG] Settings ID {sid}: {settings}")
+
+            print(f"[DEBUG] Parsed settings for {len(parsed_settings)} configurations")
+            
+            for sid, settings in parsed_settings.items():
+                print(f"[DEBUG] Settings ID {sid}: {settings}")
+
         except Exception as e:
             print(f"[ERROR] Failed to parse settings file: {e}")
             print(f"[ERROR] Settings file content:\n{settings_content}")
