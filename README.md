@@ -19,7 +19,8 @@ STBI WordNet is a web-based application designed to experiment with improving te
   - Pydantic  
 - Additional dependencies as listed in `requirements.txt`
 
-## How to Run the Program
+## Backend Setup Instructions
+This section covers how to set up the backend for STBI WordNet.
 
 1. **Backend Setup:**  
    - Install Python dependencies:  
